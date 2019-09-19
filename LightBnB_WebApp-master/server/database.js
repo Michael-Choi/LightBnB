@@ -114,11 +114,33 @@ exports.getAllReservations = getAllReservations;
  */
 const getAllProperties = function(options, limit = 10) {
   let queryString = `
-    SELECT * FROM properties
-    LIMIT $1;
+  SELECT properties.*, avg(property_reviews.rating) as average_rating
+  FROM properties
+  JOIN property_reviews ON properties.id = property_id
     `;
-  values = [limit];
-  return pool.query(queryString, values).then(res => res.rows);
+  let queryParams = [];
+  if (options.city) {
+    queryParams.push(`%${options.city}%`);
+    queryString += `and city LIKE $${queryParams.length} `;
+  }
+  if (options.minimum_price_per_night) {
+    queryParams.push(`${options.minimum_price_per_night}`);
+    queryString += `and cost_per_night >= $${queryParams.length} `;
+  }
+  if (options.maximum_price_per_night) {
+    queryParams.push(`${options.maximum_price_per_night}`);
+    queryString += `and cost_per_night <= $${queryParams.length} `;
+  }
+  queryString.replace("and", "where");
+
+  queryParams.push(limit);
+  queryString += `
+  GROUP BY properties.id
+  ORDER BY cost_per_night
+  LIMIT $${queryParams.length};
+  `;
+  console.log(queryString, queryParams);
+  return pool.query(queryString, queryParams).then(res => res.rows);
 };
 exports.getAllProperties = getAllProperties;
 
@@ -128,9 +150,21 @@ exports.getAllProperties = getAllProperties;
  * @return {Promise<{}>} A promise to the property.
  */
 const addProperty = function(property) {
-  const propertyId = Object.keys(properties).length + 1;
-  property.id = propertyId;
-  properties[propertyId] = property;
-  return Promise.resolve(property);
+  let values = [];
+  let queryString = `
+  INSERT INTO properties VALUES ($2, $3, $4, $5, $6, $7,$8, $9, $10, $11, $12, $13, $14, $1)
+  RETURNING *
+  `;
+
+  console.log(property);
+  for (let key in property) {
+    values.push(property[key]);
+    console.log(property[key]);
+  }
+
+  return pool
+    .query(queryString, values)
+    .then(res => res.rows)
+    .catch(err => console.log(err));
 };
 exports.addProperty = addProperty;
